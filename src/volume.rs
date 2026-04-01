@@ -46,9 +46,6 @@ struct VolumeInput<'a> {
     path: &'a str,
 }
 
-// ── Client ────────────────────────────────────────────────────────────────────
-
-/// Client for volume operations.
 #[derive(Clone)]
 pub struct VolumeClient {
     inner: Arc<ClientInner>,
@@ -70,8 +67,7 @@ impl VolumeClient {
     }
 
     fn url(&self, method: &str) -> reqwest::Url {
-        self.inner
-            .url(&format!("io.pocketenv.volume.{}", method))
+        self.inner.url(&format!("io.pocketenv.volume.{}", method))
     }
 
     /// Add a volume to a sandbox.
@@ -89,7 +85,6 @@ impl VolumeClient {
         Ok(())
     }
 
-    /// Delete a volume by ID.
     pub async fn delete(&self, id: &str) -> Result<()> {
         let mut url = self.url("deleteVolume");
         url.query_pairs_mut().append_pair("id", id);
@@ -103,7 +98,6 @@ impl VolumeClient {
         Ok(())
     }
 
-    /// Fetch a single volume by ID.
     pub async fn get(&self, id: &str) -> Result<Volume> {
         #[derive(Deserialize)]
         struct Response {
@@ -124,7 +118,6 @@ impl VolumeClient {
         Ok(res.volume.into())
     }
 
-    /// List volumes for a sandbox (paginated).
     pub async fn list(&self, sandbox_id: &str, offset: u32, limit: u32) -> Result<Vec<Volume>> {
         #[derive(Deserialize)]
         struct Response {
@@ -148,14 +141,7 @@ impl VolumeClient {
         Ok(res.volumes.into_iter().map(Into::into).collect())
     }
 
-    /// Update an existing volume.
-    pub async fn update(
-        &self,
-        id: &str,
-        sandbox_id: &str,
-        name: &str,
-        path: &str,
-    ) -> Result<()> {
+    pub async fn update(&self, id: &str, sandbox_id: &str, name: &str, path: &str) -> Result<()> {
         self.inner
             .http
             .post(self.url("updateVolume"))
