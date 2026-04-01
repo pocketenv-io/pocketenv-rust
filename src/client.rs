@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+pub(crate) const DEFAULT_API_URL: &str = "https://api.pocketenv.io";
+
 // ── Shared HTTP state ────────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -49,6 +51,11 @@ pub struct PocketenvClient {
 }
 
 impl PocketenvClient {
+    /// Create a client using the default API URL (`https://api.pocketenv.io`).
+    pub fn with_token(token: impl Into<String>) -> Self {
+        Self::new(DEFAULT_API_URL, token)
+    }
+
     pub fn new(api_url: impl Into<String>, token: impl Into<String>) -> Self {
         let inner = Arc::new(ClientInner {
             api_url: api_url.into(),

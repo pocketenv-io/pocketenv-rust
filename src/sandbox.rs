@@ -3,10 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::client::ClientInner;
+use crate::client::{ClientInner, DEFAULT_API_URL};
 
-const DEFAULT_BASE: &str =
-    "at://did:plc:aturpi2ls3yvsmhc6wybomun/io.pocketenv.sandbox/openclaw";
+const DEFAULT_BASE: &str = "at://did:plc:aturpi2ls3yvsmhc6wybomun/io.pocketenv.sandbox/openclaw";
 
 // ── Public sandbox client ─────────────────────────────────────────────────────
 
@@ -122,20 +121,13 @@ impl SandboxClient {
     }
 
     /// List sandboxes for a specific actor (DID), paginated.
-    pub async fn list_by_actor(
-        &self,
-        did: &str,
-        offset: u32,
-        limit: u32,
-    ) -> Result<Vec<Sandbox>> {
+    pub async fn list_by_actor(&self, did: &str, offset: u32, limit: u32) -> Result<Vec<Sandbox>> {
         #[derive(Deserialize)]
         struct ListResponse {
             sandboxes: Vec<SandboxView>,
         }
 
-        let mut url = self
-            .inner
-            .url("io.pocketenv.actor.getActorSandboxes");
+        let mut url = self.inner.url("io.pocketenv.actor.getActorSandboxes");
         url.query_pairs_mut()
             .append_pair("did", did)
             .append_pair("offset", &offset.to_string())
@@ -211,6 +203,127 @@ pub struct CreateOptions {
     /// Disk in GB.
     pub disk: Option<u32>,
     pub keep_alive: Option<bool>,
+}
+
+/// Builder for creating a sandbox without a pre-existing `PocketenvClient`.
+///
+/// ```no_run
+/// # #[tokio::main] async fn main() -> anyhow::Result<()> {
+/// use pocketenv::Sandbox;
+/// let sandbox = Sandbox::builder("my-env")
+///     .provider("cloudflare")
+///     .vcpus(2)
+///     .memory(4)
+///     .disk(10)
+///     .token(std::env::var("POCKETENV_TOKEN")?)
+///     .create()
+///     .await?;
+/// # Ok(()) }
+/// ```
+pub struct SandboxBuilder {
+    name: String,
+    api_url: String,
+    token: Option<String>,
+    provider: Option<String>,
+    base: Option<String>,
+    repo: Option<String>,
+    description: Option<String>,
+    vcpus: Option<u32>,
+    memory: Option<u32>,
+    disk: Option<u32>,
+    keep_alive: Option<bool>,
+}
+
+impl SandboxBuilder {
+    fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            api_url: DEFAULT_API_URL.to_string(),
+            token: None,
+            provider: None,
+            base: None,
+            repo: None,
+            description: None,
+            vcpus: None,
+            memory: None,
+            disk: None,
+            keep_alive: None,
+        }
+    }
+
+    /// Override the API base URL (defaults to `https://api.pocketenv.io`).
+    pub fn api_url(mut self, url: impl Into<String>) -> Self {
+        self.api_url = url.into();
+        self
+    }
+
+    pub fn token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
+    }
+
+    pub fn provider(mut self, provider: impl Into<String>) -> Self {
+        self.provider = Some(provider.into());
+        self
+    }
+
+    pub fn base(mut self, base: impl Into<String>) -> Self {
+        self.base = Some(base.into());
+        self
+    }
+
+    pub fn repo(mut self, repo: impl Into<String>) -> Self {
+        self.repo = Some(repo.into());
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn vcpus(mut self, vcpus: u32) -> Self {
+        self.vcpus = Some(vcpus);
+        self
+    }
+
+    /// Memory in GB.
+    pub fn memory(mut self, memory: u32) -> Self {
+        self.memory = Some(memory);
+        self
+    }
+
+    /// Disk in GB.
+    pub fn disk(mut self, disk: u32) -> Self {
+        self.disk = Some(disk);
+        self
+    }
+
+    pub fn keep_alive(mut self, keep_alive: bool) -> Self {
+        self.keep_alive = Some(keep_alive);
+        self
+    }
+
+    /// Create the sandbox. Requires `.token()` to have been called.
+    pub async fn create(self) -> Result<Sandbox> {
+        let token = self.token.ok_or_else(|| {
+            anyhow::anyhow!("token is required — call .token(\"...\") on the builder")
+        })?;
+        let client = SandboxClient::new(self.api_url, token);
+        client
+            .create(CreateOptions {
+                base: self.base,
+                name: Some(self.name),
+                provider: self.provider,
+                repo: self.repo,
+                description: self.description,
+                vcpus: self.vcpus,
+                memory: self.memory,
+                disk: self.disk,
+                keep_alive: self.keep_alive,
+            })
+            .await
+    }
 }
 
 /// Result of executing a command inside a sandbox.
@@ -347,6 +460,10 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
+    pub fn builder(name: impl Into<String>) -> SandboxBuilder {
+        SandboxBuilder::new(name)
+    }
+
     pub(crate) fn from_view(v: SandboxView, client: Arc<ClientInner>) -> Self {
         Self {
             id: v.id,
@@ -372,8 +489,7 @@ impl Sandbox {
     }
 
     fn url(&self, method: &str) -> reqwest::Url {
-        self.client
-            .url(&format!("io.pocketenv.sandbox.{}", method))
+        self.client.url(&format!("io.pocketenv.sandbox.{}", method))
     }
 
     fn url_with_id(&self, method: &str) -> reqwest::Url {

@@ -1,4 +1,4 @@
-use pocketenv::PocketenvClient;
+use pocketenv::{PocketenvClient, Sandbox};
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -23,6 +23,43 @@ fn sandbox_json(id: &str) -> serde_json::Value {
         "createdAt": "2024-01-01T00:00:00.000Z",
         "startedAt": "2024-01-01T00:01:00.000Z"
     })
+}
+
+// ── Sandbox::builder ──────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn sandbox_builder_create() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/xrpc/io.pocketenv.sandbox.createSandbox"))
+        .and(header("Authorization", "Bearer builder-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(sandbox_json("sb-builder")))
+        .mount(&server)
+        .await;
+
+    let sandbox = Sandbox::builder("my-env")
+        .provider("cloudflare")
+        .vcpus(2)
+        .memory(4)
+        .disk(10)
+        .token("builder-token")
+        .api_url(server.uri())
+        .create()
+        .await
+        .unwrap();
+
+    assert_eq!(sandbox.id, "sb-builder");
+    assert_eq!(sandbox.provider.as_deref(), Some("cloudflare"));
+    assert_eq!(sandbox.vcpus, Some(2));
+    assert_eq!(sandbox.memory, Some(4));
+    assert_eq!(sandbox.disk, Some(10));
+}
+
+#[tokio::test]
+async fn sandbox_builder_missing_token_returns_error() {
+    let result = Sandbox::builder("no-token-env").create().await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("token is required"));
 }
 
 // ── SandboxClient ─────────────────────────────────────────────────────────────
